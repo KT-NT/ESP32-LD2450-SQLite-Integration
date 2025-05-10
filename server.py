@@ -21,16 +21,19 @@ def init_db():
 
 @app.route('/add', methods=['POST'])
 def add_reading():
-    content = request.get_json()
-    ts = content.get('ts')
-    data = content.get('data')
-    received = datetime.utcnow().isoformat()
+    data = request.json
+    ts = data['ts']
+    reading_data = data['data']
+    received_at = datetime.utcnow().isoformat()
+
     conn = sqlite3.connect(DB)
-    conn.execute('INSERT INTO readings (ts, data, received_at) VALUES (?, ?, ?)',
-                 (ts, data, received))
+    cursor = conn.cursor()
+    cursor.execute('INSERT INTO readings (ts, data, received_at) VALUES (?, ?, ?)', (ts, reading_data, received_at))
     conn.commit()
     conn.close()
-    return jsonify({'status':'ok'}), 201
+
+    return jsonify({'status': 'ok'}), 201
+
 
 @app.route('/all', methods=['GET'])
 def get_all():
