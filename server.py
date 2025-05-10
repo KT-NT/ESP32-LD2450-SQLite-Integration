@@ -5,6 +5,21 @@ from datetime import datetime
 app = Flask(__name__)
 DB = 'ld2450.db'
 
+def init_db():
+    conn = sqlite3.connect(DB)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts INTEGER NOT NULL,
+            data TEXT NOT NULL,
+            received_at TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()  # вызываем при старте
 
 def init_db():
     conn = sqlite3.connect(DB)
