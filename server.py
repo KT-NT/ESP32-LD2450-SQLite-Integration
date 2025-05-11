@@ -1,16 +1,11 @@
-# server.py
 from flask import Flask, request, jsonify
 import sqlite3
 from datetime import datetime
-import struct, base64
 
-# --- Configuration ---
+# Имя файла базы
 DB = 'ld2450.db'
-FRAME_HEADER = b"\xAA\xFF"
-FRAME_FOOTER = b"\x55\xCC"
-NUM_TARGETS = 3
 
-# Database initialization: create table for radar targets
+# Инициализация базы — создаёт таблицу, если её нет
 def init_db():
     conn = sqlite3.connect(DB)
     conn.execute('''
@@ -21,81 +16,77 @@ def init_db():
         angle REAL NOT NULL,
         distance REAL NOT NULL,
         velocity REAL NOT NULL,
-        amplitude REAL NOT NULL,
+        amplitude INTEGER NOT NULL,
         received_at TEXT NOT NULL
       )
     ''')
     conn.commit()
     conn.close()
 
+# вызываем при старте
 init_db()
-app = Flask(__name__)
 
-# Helper: parse a single 10-byte target record
-# structure: <H H h H => angle_raw, dist_raw, vel_raw, amp_raw
-# angle in hundredths of degree, distance in mm, velocity in hundredths m/s
-TARGET_STRUCT = '<H H h H'
-RECORD_SIZE = struct.calcsize(TARGET_STRUCT)
+app = Flask(__name__)
 
 @app.route('/add', methods=['POST'])
 def add_reading():
     data = request.get_json(force=True, silent=True)
-    if not data or 'ts' not in data or 'data' not in data:
-        return jsonify({'error':'invalid JSON, expected {"ts":…, "data":…}'}), 400
+    # проверяем, что JSON соответствует формату
+    if not data or 'ts' not in data or 'targets' not in data:
+        return jsonify({
+            'error': 'invalid JSON, expected {"ts":…, "targets":[…]}'
+        }), 400
 
     ts = data['ts']
-    b64 = data['data']
-    try:
-        raw = base64.b64decode(b64)
-    except Exception:
-        return jsonify({'error':'invalid base64'}), 400
+    targets = data['targets']
+    received = datetime.utcnow().isoformat()
 
-    # find header and footer
-    if not raw.startswith(FRAME_HEADER) or not raw.endswith(FRAME_FOOTER):
-        return jsonify({'error':'invalid frame format'}), 400
-
-    payload = raw[len(FRAME_HEADER):-len(FRAME_FOOTER)]
     conn = sqlite3.connect(DB)
-    received_at = datetime.utcnow().isoformat()
-    for idx in range(NUM_TARGETS):
-        start = idx * RECORD_SIZE
-        chunk = payload[start:start+RECORD_SIZE]
-        if len(chunk) < RECORD_SIZE:
-            break
-        angle_raw, dist_raw, vel_raw, amp_raw = struct.unpack(TARGET_STRUCT, chunk)
-        angle = angle_raw / 100.0          # hundredths of degree
-        distance = dist_raw / 1000.0       # convert mm to meters
-        velocity = vel_raw / 100.0         # hundredths m/s to m/s
-        amplitude = amp_raw                # raw amplitude
-        # Save even zero targets if desired
-        conn.execute(
-            'INSERT INTO targets (frame_ts, target_index, angle, distance, velocity, amplitude, received_at) VALUES (?,?,?,?,?,?,?)',
-            (ts, idx+1, angle, distance, velocity, amplitude, received_at)
-        )
+    cursor = conn.cursor()
+    for idx, t in enumerate(targets, start=1):
+        # вставляем каждую цель в отдельную строку
+        cursor.execute('''
+          INSERT INTO targets
+            (frame_ts, target_index, angle, distance, velocity, amplitude, received_at)
+          VALUES (?,?,?,?,?,?,?)
+        ''', (
+          ts,
+          idx,
+          t.get('angle', 0),
+          t.get('distance', 0),
+          t.get('velocity', 0),
+          t.get('amplitude', 0),
+          received
+        ))
     conn.commit()
     conn.close()
-    return jsonify({'status':'ok'}), 201
+
+    return jsonify({'status': 'ok'}), 201
 
 @app.route('/all', methods=['GET'])
 def get_all():
     conn = sqlite3.connect(DB)
-    rows = conn.execute(
-        'SELECT id, frame_ts, target_index, angle, distance, velocity, amplitude, received_at FROM targets ORDER BY id DESC'
-    ).fetchall()
+    rows = conn.execute('''
+      SELECT frame_ts, target_index, angle, distance, velocity, amplitude, received_at
+      FROM targets
+      ORDER BY id DESC
+    ''').fetchall()
     conn.close()
+
+    # формируем список словарей
     result = []
     for r in rows:
         result.append({
-            'id': r[0],
-            'ts': r[1],
-            'target': r[2],
-            'angle': r[3],
-            'distance': r[4],
-            'velocity': r[5],
-            'amplitude': r[6],
-            'received_at': r[7]
+            'frame_ts':     r[0],
+            'target_index': r[1],
+            'angle':        r[2],
+            'distance':     r[3],
+            'velocity':     r[4],
+            'amplitude':    r[5],
+            'received_at':  r[6]
         })
-    return jsonify(result)
+    return jsonify(result), 200
 
 if __name__ == '__main__':
+    # Для отладки можно включить debug=True
     app.run(host='0.0.0.0', port=8000)
