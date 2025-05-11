@@ -1,19 +1,27 @@
+# server.py
 from flask import Flask, request, jsonify
 import sqlite3
 from datetime import datetime
-import base64
-import binascii
+import struct, base64
 
+# --- Configuration ---
 DB = 'ld2450.db'
+FRAME_HEADER = b"\xAA\xFF"
+FRAME_FOOTER = b"\x55\xCC"
+NUM_TARGETS = 3
 
+# Database initialization: create table for radar targets
 def init_db():
     conn = sqlite3.connect(DB)
     conn.execute('''
-      CREATE TABLE IF NOT EXISTS readings (
+      CREATE TABLE IF NOT EXISTS targets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ts INTEGER NOT NULL,
-        data_b64 TEXT NOT NULL,
-        data_hex TEXT NOT NULL,
+        frame_ts INTEGER NOT NULL,
+        target_index INTEGER NOT NULL,
+        angle REAL NOT NULL,
+        distance REAL NOT NULL,
+        velocity REAL NOT NULL,
+        amplitude REAL NOT NULL,
         received_at TEXT NOT NULL
       )
     ''')
@@ -21,8 +29,13 @@ def init_db():
     conn.close()
 
 init_db()
-
 app = Flask(__name__)
+
+# Helper: parse a single 10-byte target record
+# structure: <H H h H => angle_raw, dist_raw, vel_raw, amp_raw
+# angle in hundredths of degree, distance in mm, velocity in hundredths m/s
+TARGET_STRUCT = '<H H h H'
+RECORD_SIZE = struct.calcsize(TARGET_STRUCT)
 
 @app.route('/add', methods=['POST'])
 def add_reading():
@@ -34,43 +47,53 @@ def add_reading():
     b64 = data['data']
     try:
         raw = base64.b64decode(b64)
-    except binascii.Error as e:
-        return jsonify({'error':'invalid base64','detail':str(e)}), 400
+    except Exception:
+        return jsonify({'error':'invalid base64'}), 400
 
-    # Представим, что мы просто хотим видеть HEX‑строку
-    hex_str = raw.hex()
+    # find header and footer
+    if not raw.startswith(FRAME_HEADER) or not raw.endswith(FRAME_FOOTER):
+        return jsonify({'error':'invalid frame format'}), 400
 
+    payload = raw[len(FRAME_HEADER):-len(FRAME_FOOTER)]
+    conn = sqlite3.connect(DB)
     received_at = datetime.utcnow().isoformat()
-
-    try:
-        conn = sqlite3.connect(DB)
+    for idx in range(NUM_TARGETS):
+        start = idx * RECORD_SIZE
+        chunk = payload[start:start+RECORD_SIZE]
+        if len(chunk) < RECORD_SIZE:
+            break
+        angle_raw, dist_raw, vel_raw, amp_raw = struct.unpack(TARGET_STRUCT, chunk)
+        angle = angle_raw / 100.0          # hundredths of degree
+        distance = dist_raw / 1000.0       # convert mm to meters
+        velocity = vel_raw / 100.0         # hundredths m/s to m/s
+        amplitude = amp_raw                # raw amplitude
+        # Save even zero targets if desired
         conn.execute(
-            'INSERT INTO readings (ts, data_b64, data_hex, received_at) VALUES (?,?,?,?)',
-            (ts, b64, hex_str, received_at)
+            'INSERT INTO targets (frame_ts, target_index, angle, distance, velocity, amplitude, received_at) VALUES (?,?,?,?,?,?,?)',
+            (ts, idx+1, angle, distance, velocity, amplitude, received_at)
         )
-        conn.commit()
-    except Exception as e:
-        return jsonify({'error':'db write failed','detail':str(e)}), 500
-    finally:
-        conn.close()
-
+    conn.commit()
+    conn.close()
     return jsonify({'status':'ok'}), 201
 
 @app.route('/all', methods=['GET'])
 def get_all():
     conn = sqlite3.connect(DB)
     rows = conn.execute(
-        'SELECT id, ts, data_b64, data_hex, received_at FROM readings ORDER BY id DESC'
+        'SELECT id, frame_ts, target_index, angle, distance, velocity, amplitude, received_at FROM targets ORDER BY id DESC'
     ).fetchall()
     conn.close()
     result = []
     for r in rows:
         result.append({
-            'id':        r[0],
-            'ts':        r[1],
-            'data_b64':  r[2],
-            'data_hex':  r[3],
-            'received_at': r[4]
+            'id': r[0],
+            'ts': r[1],
+            'target': r[2],
+            'angle': r[3],
+            'distance': r[4],
+            'velocity': r[5],
+            'amplitude': r[6],
+            'received_at': r[7]
         })
     return jsonify(result)
 
