@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Вход</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <h2>Вход в систему</h2>
+  {% if error %}
+  <p style="color:red;">{{ error }}</p>
+  {% endif %}
+  <form action="{{ url_for('login') }}" method="post">
+    <label for="username">Имя пользователя:</label><br>
+    <input type="text" id="username" name="username" required><br><br>
+    <label for="password">Пароль:</label><br>
+    <input type="password" id="password" name="password" required><br><br>
+    <input type="submit" value="Войти">
+  </form>
+</body>
+</html>
