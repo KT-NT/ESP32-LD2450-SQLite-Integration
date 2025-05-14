@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>График активности</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <!-- Подключаем Chart.js через CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h2>Добро пожаловать, {{ username }}! <a href="{{ url_for('logout') }}">(Выход)</a></h2>
+  <div>
+    <button id="showLive">Реальное время</button>
+    <button id="showHistory">История</button>
+  </div>
+  <!-- Раздел с графиком в реальном времени -->
+  <div id="liveSection">
+    <h3>Реальное время</h3>
+    <canvas id="liveChart"></canvas>
+  </div>
+  <!-- Раздел с выбором интервала в историческом режиме -->
+  <div id="historySection" style="display:none;">
+    <h3>Исторический режим</h3>
+    <label for="startTime">Начало:</label>
+    <input type="datetime-local" id="startTime">
+    <label for="endTime">Конец:</label>
+    <input type="datetime-local" id="endTime">
+    <button id="loadHistory">Загрузить</button>
+    <canvas id="historyChart"></canvas>
+    <div id="stats"></div>
+  </div>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
