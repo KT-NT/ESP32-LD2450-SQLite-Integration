@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Мониторинг скорости</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 30px;
+    }
+    canvas {
+      max-width: 800px;
+    }
+  </style>
+</head>
+<body>
+  <h1>📡 Мониторинг скорости цели</h1>
+
+  <button id="resetBtn">Сбросить график</button>
+
+  <div style="margin-top:20px;">
+    <canvas id="liveChart" width="800" height="400"></canvas>
+    <p>Активность: <span id="activity">0%</span></p>
+  </div>
+
+  <script>
+    const ctx = document.getElementById('liveChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Скорость (м/с)',
+          data: [],
+          borderColor: 'blue',
+          tension: 0.1
+        }]
+      },
+      options: {
+        scales: {
+          x: { title: { display: true, text: 'Время' } },
+          y: { title: { display: true, text: 'Скорость (м/с)' } }
+        }
+      }
+    });
+
+    function updateChart() {
+      fetch('/all')
+        .then(r => r.json())
+        .then(data => {
+          chart.data.labels = data.map(d => new Date(d.frame_ts * 1000)
+            .toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+          chart.data.datasets[0].data = data.map(d => d.velocity);
+          chart.update();
+
+          const values = chart.data.datasets[0].data;
+          const active = values.filter(v => Math.abs(v) > 0.1).length;
+          const percent = values.length ? (active / values.length * 100).toFixed(1) : 0;
+          document.getElementById('activity').innerText = percent + '%';
+        });
+    }
+
+    setInterval(updateChart, 1000);
+    updateChart();
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      chart.data.labels = [];
+      chart.data.datasets[0].data = [];
+      chart.update();
+      document.getElementById('activity').innerText = '0%';
+    });
+  </script>
+</body>
+</html>
