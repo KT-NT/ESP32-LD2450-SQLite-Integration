@@ -8,7 +8,7 @@
 ## 📥 Клонирование репозитория
 
 ```bash
-git clone https://github.com/<ваш-ник>/ESP32-LD2450-SQLite-Integration.git
+git clone https://github.com/KT-NT/ESP32-LD2450-SQLite-Integration.git
 cd ESP32-LD2450-SQLite-Integration
 
 ⚙️ Установка и запуск сервера
